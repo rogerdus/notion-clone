@@ -1,6 +1,0 @@
-[database_adapter_configuration]
-provider = "postgresql"
-
-[generator_configurations]
-provider = "prisma-client"
-output = "../src/generated/prisma"

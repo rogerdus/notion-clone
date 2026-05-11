@@ -1,34 +1,34 @@
-import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/db";
-import { redirect, notFound } from "next/navigation";
+"use client";
+
+import { useStore } from "@/lib/store";
+import { useParams, useRouter } from "next/navigation";
+import { useEffect } from "react";
 import BlockEditor from "@/components/BlockEditor";
-import type { Block, Page } from "@/lib/types";
 
-export default async function PageEditor({
-  params,
-}: {
-  params: Promise<{ pageId: string }>;
-}) {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/");
+export default function PageEditor() {
+  const { user, pages, getBlocks } = useStore();
+  const params = useParams();
+  const router = useRouter();
+  const pageId = params.pageId as string;
 
-  const { pageId } = await params;
+  const page = pages.find((p) => p.id === pageId);
+  const blocks = getBlocks(pageId);
 
-  const page = await prisma.page.findUnique({
-    where: { id: pageId },
-    include: {
-      blocks: {
-        orderBy: { order: "asc" },
-      },
-    },
-  });
+  useEffect(() => {
+    if (!user) router.replace("/");
+  }, [user, router]);
 
-  if (!page || page.userId !== session.user.id) notFound();
+  if (!user || !page) return null;
+
+  if (page.userId !== user.id) {
+    router.replace("/dashboard");
+    return null;
+  }
 
   return (
     <BlockEditor
       pageId={page.id}
-      initialBlocks={page.blocks as unknown as Block[]}
+      initialBlocks={blocks}
       pageTitle={page.title}
       pageIcon={page.icon}
     />

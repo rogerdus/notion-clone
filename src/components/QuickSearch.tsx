@@ -2,16 +2,23 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import type { Page } from "@/lib/types";
+import { useStore } from "@/lib/store";
 
 export default function QuickSearch() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [pages, setPages] = useState<Page[]>([]);
-  const [results, setResults] = useState<Page[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
+  const { pages } = useStore();
+
+  const results = query.trim()
+    ? pages.filter(
+        (p) =>
+          p.title.toLowerCase().includes(query.toLowerCase()) ||
+          (p.icon && p.icon.includes(query))
+      )
+    : pages;
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -27,25 +34,11 @@ export default function QuickSearch() {
 
   useEffect(() => {
     if (open) {
-      fetch("/api/pages")
-        .then((r) => r.json())
-        .then(setPages);
       setQuery("");
       setSelectedIdx(0);
       setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [open]);
-
-  useEffect(() => {
-    const q = query.toLowerCase();
-    const filtered = pages.filter(
-      (p) =>
-        p.title.toLowerCase().includes(q) ||
-        (p.icon && p.icon.includes(q))
-    );
-    setResults(filtered);
-    setSelectedIdx(0);
-  }, [query, pages]);
 
   const navigate = useCallback(
     (pageId: string) => {
@@ -74,7 +67,7 @@ export default function QuickSearch() {
           <input
             ref={inputRef}
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => { setQuery(e.target.value); setSelectedIdx(0); }}
             placeholder="Search pages..."
             className="flex-1 bg-transparent text-[var(--text-primary)] outline-none text-base placeholder-[var(--text-dim)]"
             onKeyDown={(e) => {

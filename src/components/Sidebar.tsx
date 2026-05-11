@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { signOut } from "next-auth/react";
+import { useStore } from "@/lib/store";
 import { useTheme } from "@/components/ThemeProvider";
 import type { Page, PageGroup } from "@/lib/types";
 
@@ -23,6 +23,7 @@ interface SidebarProps {
 export default function Sidebar({ pages, groups }: SidebarProps) {
   const router = useRouter();
   const params = useParams();
+  const store = useStore();
   const [isCreating, setIsCreating] = useState(false);
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
@@ -83,101 +84,57 @@ export default function Sidebar({ pages, groups }: SidebarProps) {
 
   const handleCreatePage = async (groupId?: string) => {
     setIsCreating(true);
-    try {
-      const res = await fetch("/api/pages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "Untitled", groupId }),
-      });
-      const page = await res.json();
-      router.push(`/dashboard/pages/${page.id}`);
-      router.refresh();
-    } finally {
-      setIsCreating(false);
-    }
+    const page = store.createPage({ groupId });
+    router.push(`/dashboard/pages/${page.id}`);
+    setIsCreating(false);
   };
 
-  const handleDelete = async (e: React.MouseEvent, pageId: string) => {
+  const handleDelete = (e: React.MouseEvent, pageId: string) => {
     e.stopPropagation();
     if (!confirm("Delete this page?")) return;
-    await fetch(`/api/pages/${pageId}`, { method: "DELETE" });
+    store.deletePage(pageId);
     if (currentPageId === pageId) router.push("/dashboard");
-    router.refresh();
   };
 
-  const toggleFavorite = async (e: React.MouseEvent, pageId: string, current: boolean) => {
+  const toggleFavorite = (e: React.MouseEvent, pageId: string, current: boolean) => {
     e.stopPropagation();
-    await fetch(`/api/pages/${pageId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ isFavorite: !current }),
-    });
-    router.refresh();
+    store.updatePage(pageId, { isFavorite: !current });
   };
 
-  const handleCreateGroup = async () => {
+  const handleCreateGroup = () => {
     setIsCreatingGroup(true);
-    try {
-      await fetch("/api/groups", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      router.refresh();
-    } finally {
-      setIsCreatingGroup(false);
-    }
+    store.createGroup();
+    setIsCreatingGroup(false);
   };
 
-  const handleDeleteGroup = async (e: React.MouseEvent, groupId: string) => {
+  const handleDeleteGroup = (e: React.MouseEvent, groupId: string) => {
     e.stopPropagation();
     if (!confirm("Delete this group? Pages will be ungrouped.")) return;
-    await fetch(`/api/groups/${groupId}`, { method: "DELETE" });
-    router.refresh();
+    store.deleteGroup(groupId);
   };
 
-  const handleRenameGroup = async (groupId: string) => {
+  const handleRenameGroup = (groupId: string) => {
     if (editingName.trim()) {
-      await fetch(`/api/groups/${groupId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: editingName.trim() }),
-      });
-      router.refresh();
+      store.updateGroup(groupId, { name: editingName.trim() });
     }
     setEditingGroupId(null);
   };
 
-  const handleRenamePage = async (pageId: string) => {
+  const handleRenamePage = (pageId: string) => {
     if (editingPageTitle.trim()) {
-      await fetch(`/api/pages/${pageId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: editingPageTitle.trim() }),
-      });
-      router.refresh();
+      store.updatePage(pageId, { title: editingPageTitle.trim() });
     }
     setEditingPageId(null);
   };
 
-  const handleChangeIcon = async (pageId: string, icon: string) => {
-    await fetch(`/api/pages/${pageId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ icon }),
-    });
+  const handleChangeIcon = (pageId: string, icon: string) => {
+    store.updatePage(pageId, { icon });
     setIconPickerPageId(null);
-    router.refresh();
   };
 
-  const handleMovePageToGroup = async (pageId: string, groupId: string | null) => {
-    await fetch(`/api/pages/${pageId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ groupId }),
-    });
+  const handleMovePageToGroup = (pageId: string, groupId: string | null) => {
+    store.updatePage(pageId, { groupId });
     setMoveMenuPageId(null);
-    router.refresh();
   };
 
   const toggleGroupCollapse = (groupId: string) => {
@@ -221,19 +178,8 @@ export default function Sidebar({ pages, groups }: SidebarProps) {
                   {e}
                 </button>
               ))}
-        </div>
-
-        <button
-          onClick={() => handleCreatePage()}
-          disabled={isCreating}
-          className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-[var(--text-dim)] hover:text-[var(--text-muted)] transition-colors disabled:opacity-50"
-        >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          New page
-        </button>
-      </div>
+            </div>
+          </div>
         )}
       </div>
       {editingPageId === page.id ? (
@@ -515,7 +461,7 @@ export default function Sidebar({ pages, groups }: SidebarProps) {
           {theme === "dark" ? "Light mode" : "Dark mode"}
         </button>
         <button
-          onClick={() => signOut({ callbackUrl: "/" })}
+          onClick={() => { store.logout(); router.push("/"); }}
           className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)] transition-all"
         >
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

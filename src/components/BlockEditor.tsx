@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import { useStore } from "@/lib/store";
 import type { Block } from "@/lib/types";
 
 interface BlockEditorProps {
@@ -98,6 +99,7 @@ export default function BlockEditor({
   pageTitle,
   pageIcon,
 }: BlockEditorProps) {
+  const store = useStore();
   const [blocks, setBlocks] = useState<Block[]>(initialBlocks);
   const [title, setTitle] = useState(pageTitle);
   const [icon, setIcon] = useState(pageIcon);
@@ -150,103 +152,54 @@ export default function BlockEditor({
   const saveTitle = useCallback(
     (newTitle: string) => {
       if (titleTimeoutRef.current) clearTimeout(titleTimeoutRef.current);
-      titleTimeoutRef.current = setTimeout(async () => {
-        await fetch(`/api/pages/${pageId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title: newTitle }),
-        });
+      titleTimeoutRef.current = setTimeout(() => {
+        store.updatePage(pageId, { title: newTitle });
       }, 500);
     },
-    [pageId]
+    [pageId, store]
   );
 
-  const saveIcon = useCallback(async (newIcon: string) => {
-    await fetch(`/api/pages/${pageId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ icon: newIcon }),
-    });
-  }, [pageId]);
+  const saveIcon = useCallback((newIcon: string) => {
+    store.updatePage(pageId, { icon: newIcon });
+  }, [pageId, store]);
 
   const saveBlock = useCallback(
     (blockId: string, updates: Partial<Block>) => {
       const existing = blockTimeoutsRef.current.get(blockId);
       if (existing) clearTimeout(existing);
-      const timeout = setTimeout(async () => {
-        await fetch(`/api/blocks`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: blockId, ...updates }),
-        });
+      const timeout = setTimeout(() => {
+        store.updateBlock(blockId, updates);
       }, 300);
       blockTimeoutsRef.current.set(blockId, timeout);
     },
-    []
+    [store]
   );
 
   const addBlock = useCallback(
-    async (afterOrder: number, parentId: string | null = null) => {
-      const tempId = `temp-${Date.now()}`;
-      const newBlock: Block = {
-        id: tempId,
-        type: "text",
-        content: "",
-        properties: "{}",
-        pageId,
-        parentId,
-        order: afterOrder + 1,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      const updatedBlocks = [...blocks, newBlock];
-      setBlocks(updatedBlocks);
-      setFocusedBlockId(tempId);
-
-      const res = await fetch("/api/blocks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "text", content: "", pageId, order: afterOrder + 1, parentId }),
-      });
-      const saved = await res.json();
-      setBlocks((prev) => prev.map((b) => (b.id === tempId ? saved : b)));
-      setFocusedBlockId(saved.id);
+    (afterOrder: number, parentId: string | null = null) => {
+      const block = store.createBlock({ type: "text", content: "", pageId, order: afterOrder + 1, parentId });
+      setBlocks((prev) => [...prev, block]);
+      setFocusedBlockId(block.id);
     },
-    [blocks, pageId]
+    [pageId, store]
   );
 
   const deleteBlock = useCallback(
-    async (blockId: string) => {
-      const children = blocks.filter((b) => b.parentId === blockId);
-      for (const child of children) {
-        await fetch("/api/blocks", {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: child.id }),
-        });
-      }
+    (blockId: string) => {
       setBlocks((prev) => prev.filter((b) => b.id !== blockId && b.parentId !== blockId));
-      await fetch("/api/blocks", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: blockId }),
-      });
+      store.deleteBlock(blockId);
     },
-    [blocks]
+    [store]
   );
 
   const changeBlockType = useCallback(
-    async (blockId: string, type: string) => {
+    (blockId: string, type: string) => {
       setBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, type } : b)));
       setShowTypeMenu(null);
       setFocusedBlockId(blockId);
-      await fetch("/api/blocks", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: blockId, type }),
-      });
+      store.updateBlock(blockId, { type });
     },
-    []
+    [store]
   );
 
   const handleBlockContent = useCallback(
@@ -258,7 +211,7 @@ export default function BlockEditor({
   );
 
   const indentBlock = useCallback(
-    async (blockId: string) => {
+    (blockId: string) => {
       const idx = blocks.findIndex((b) => b.id === blockId);
       if (idx <= 0) return;
       const block = blocks[idx];
@@ -268,17 +221,13 @@ export default function BlockEditor({
       setBlocks((prevBlocks) =>
         prevBlocks.map((b) => (b.id === blockId ? { ...b, parentId: newParentId } : b))
       );
-      await fetch("/api/blocks", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: blockId, parentId: newParentId }),
-      });
+      store.updateBlock(blockId, { parentId: newParentId });
     },
-    [blocks]
+    [blocks, store]
   );
 
   const outdentBlock = useCallback(
-    async (blockId: string) => {
+    (blockId: string) => {
       const block = blocks.find((b) => b.id === blockId);
       if (!block?.parentId) return;
       const parent = blocks.find((b) => b.id === block.parentId);
@@ -286,13 +235,9 @@ export default function BlockEditor({
       setBlocks((prevBlocks) =>
         prevBlocks.map((b) => (b.id === blockId ? { ...b, parentId: newParentId } : b))
       );
-      await fetch("/api/blocks", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: blockId, parentId: newParentId }),
-      });
+      store.updateBlock(blockId, { parentId: newParentId });
     },
-    [blocks]
+    [blocks, store]
   );
 
   const handleKeyDown = useCallback(
@@ -386,7 +331,7 @@ export default function BlockEditor({
   }, []);
 
   const handleDrop = useCallback(
-    async (e: React.DragEvent, targetId: string) => {
+    (e: React.DragEvent, targetId: string) => {
       e.preventDefault();
       setDragOverId(null);
       const sourceId = dragSourceRef.current;
@@ -412,15 +357,11 @@ export default function BlockEditor({
         if (orig && orig.order !== b.order) changed.push({ id: b.id, order: b.order });
       }
       if (changed.length > 0) {
-        await fetch("/api/blocks", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ blocks: changed }),
-        });
+        store.reorderBlocks(changed);
       }
       dragSourceRef.current = null;
     },
-    [blocks]
+    [blocks, store]
   );
 
   const updateBlockProps = useCallback(
@@ -528,7 +469,6 @@ export default function BlockEditor({
     if (block.type === "image") {
       const url = props.url || "";
       const imgWidth = props.width || 100;
-
       const handleImageMouseDown = (e: React.MouseEvent) => {
         e.preventDefault();
         resizeRef.current = { blockId: block.id, startX: e.clientX, startW: imgWidth };

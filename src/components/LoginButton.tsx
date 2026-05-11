@@ -1,11 +1,14 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { signIn } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import { useStore } from "@/lib/store";
 
 export default function LoginButton() {
   const [loading, setLoading] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const router = useRouter();
+  const { login } = useStore();
 
   const handleClick = async () => {
     setLoading(true);
@@ -16,7 +19,8 @@ export default function LoginButton() {
         audioRef.current!.onended = resolve;
       });
     }
-    await signIn("credentials", { redirectTo: "/dashboard" });
+    login();
+    router.push("/dashboard");
   };
 
   return (
