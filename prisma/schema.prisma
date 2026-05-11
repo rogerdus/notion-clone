@@ -1,0 +1,105 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @default("")
+  access_token      String? @default("")
+  expires_at        Int?
+  token_type        String? @default("")
+  scope             String? @default("")
+  id_token          String? @default("")
+  session_state     String? @default("")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id            String      @id @default(cuid())
+  name          String?
+  email         String?     @unique
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+  pages         Page[]
+  groups        PageGroup[]
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model PageGroup {
+  id        String   @id @default(cuid())
+  name      String   @default("New Group")
+  icon      String   @default("📁")
+  userId    String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pages Page[]
+}
+
+model Page {
+  id        String  @id @default(cuid())
+  title     String  @default("Untitled")
+  icon      String  @default("📄")
+  userId    String
+  parentId  String?
+  groupId   String?
+  isFavorite Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  order     Int     @default(0)
+
+  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent   Page?      @relation("PageHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children Page[]     @relation("PageHierarchy")
+  group    PageGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  blocks   Block[]
+
+  fulltext String? @default("")
+}
+
+model Block {
+  id        String   @id @default(cuid())
+  type      String   @default("text")
+  content   String   @default("")
+  properties String  @default("{}")
+  pageId    String
+  parentId  String?
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  page     Page   @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  parent   Block? @relation("BlockHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children Block[] @relation("BlockHierarchy")
+}
